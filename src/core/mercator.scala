@@ -19,9 +19,9 @@
 */
 package mercator
 
-import scala.annotation.compileTimeOnly
 import scala.language.higherKinds
 import scala.reflect.macros._
+import scala.collection.generic.CanBuildFrom
 
 import language.experimental.macros
 
@@ -40,45 +40,19 @@ object `package` {
       monadic.filter[A](value)(fn)
   }
 
-  final implicit class Mtl[M[_], N[_], A](val value: M[N[A]]) extends AnyVal {
-    @inline def in: Inner[M, N, A] = new Inner[M, N, A](value)
+  final implicit class CollOps[M[_], Coll[T] <: Iterable[T], A](val value: Coll[M[A]]) extends AnyVal {
+    @inline def sequence(implicit monadic: Monadic[M], cbf: CanBuildFrom[Nothing, A, Coll[A]]): M[Coll[A]] =
+      value.foldLeft(monadic.point(List[A]()): M[List[A]]) { (acc, next) =>
+        acc.flatMap { xs => next.map(_ :: xs) }
+      }.map(_.reverse.to[Coll])
   }
   
-  final implicit class Mtl2[M[_], N[_], P[_], A](val value: M[N[P[A]]]) extends AnyVal {
-    @inline def in2: Inner2[M, N, P, A] = new Inner2[M, N, P, A](value)
+  final implicit class TraversableOps[Coll[T] <: Iterable[T], A](val value: Coll[A]) extends AnyVal {
+    @inline def traverse[B, M[_]](fn: A => M[B])(implicit monadic: Monadic[M], cbf: CanBuildFrom[Nothing, B, Coll[B]]): M[Coll[B]] =
+      value.foldLeft(monadic.point(List[B]())) { (acc, next) =>
+        acc.flatMap { xs => fn(next).map(_ :: xs) }
+      }.map(_.reverse.to[Coll])
   }
-  
-  final implicit class Mtl3[M[_], N[_], P[_], Q[_], A](val value: M[N[P[Q[A]]]]) extends AnyVal {
-    @inline def in3: Inner3[M, N, P, Q, A] = new Inner3[M, N, P, Q, A](value)
-  }
-}
-
-class Inner[M[_], N[_], A](val value: M[N[A]]) extends AnyVal { inner =>
-  @inline def flatMap[B](fn: A => N[B])(implicit monadicM: Monadic[M], monadicN: Monadic[N]): M[N[B]] =
-    monadicM.map[N[A], N[B]](value)(monadicN.flatMap[A, B](_)(fn))
-
-  @inline def map[B](fn: A => B)(implicit monadicM: Monadic[M], monadicN: Monadic[N]): M[N[B]] =
-    monadicM.map[N[A], N[B]](value)(monadicN.map[A, B](_)(fn))
-}
-
-class Inner2[M[_], N[_], P[_], A](val value: M[N[P[A]]]) extends AnyVal { inner =>
-  @inline def flatMap[B](fn: A => P[B])(implicit monadicM: Monadic[M], monadicN: Monadic[N], monadicP: Monadic[P]): M[N[P[B]]] =
-    monadicM.map[N[P[A]], N[P[B]]](value) { value2 => monadicN.map[P[A], P[B]](value2)(monadicP.flatMap[A, B](_)(fn)) }
-
-  @inline def map[B](fn: A => B)(implicit monadicM: Monadic[M], monadicN: Monadic[N], monadicP: Monadic[P]): M[N[P[B]]] =
-    monadicM.map[N[P[A]], N[P[B]]](value) { value2 => monadicN.map[P[A], P[B]](value2)(monadicP.map[A, B](_)(fn)) }
-}
-
-class Inner3[M[_], N[_], P[_], Q[_], A](val value: M[N[P[Q[A]]]]) extends AnyVal { inner =>
-  @inline def flatMap[B](fn: A => Q[B])(implicit monadicM: Monadic[M], monadicN: Monadic[N], monadicP: Monadic[P], monadicQ: Monadic[Q]): M[N[P[Q[B]]]] =
-    monadicM.map[N[P[Q[A]]], N[P[Q[B]]]](value) { value2 =>
-      monadicN.map[P[Q[A]], P[Q[B]]](value2) { value3 => monadicP.map[Q[A], Q[B]](value3)(monadicQ.flatMap[A, B](_)(fn)) }
-    }
-
-  @inline def map[B](fn: A => B)(implicit monadicM: Monadic[M], monadicN: Monadic[N], monadicP: Monadic[P], monadicQ: Monadic[Q]): M[N[P[Q[B]]]] =
-    monadicM.map[N[P[Q[A]]], N[P[Q[B]]]](value) { value2 =>
-      monadicN.map[P[Q[A]], P[Q[B]]](value2) { value3 => monadicP.map[Q[A], Q[B]](value3)(monadicQ.map[A, B](_)(fn)) }
-    }
 }
 
 object Mercator {
