@@ -72,6 +72,7 @@ object Mercator {
     q"""
       new $instantiation {
         def point[A](value: A): Monad[A] = $pointApplication
+        def ap[A, B](from: Monad[A])(fn: Monad[A => B]): Monad[B] = fn.flatMap(f => from.map(f))
         def flatMap[A, B](from: Monad[A])(fn: A => Monad[B]): Monad[B] = from.flatMap(fn)
         def map[A, B](from: Monad[A])(fn: A => B): Monad[B] = from.map(fn)
         ..$filterMethods
@@ -83,6 +84,7 @@ object Mercator {
 trait Monadic[F[_]] {
   type Monad[T] = F[T]
   def point[A](value: A): F[A]
+  def ap[A, B](from: F[A])(fn: F[A => B]): F[B]
   def flatMap[A, B](from: F[A])(fn: A => F[B]): F[B]
   def map[A, B](from: F[A])(fn: A => B): F[B]
 }
